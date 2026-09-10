@@ -1,0 +1,4 @@
+node_modules/
+.hypir/
+*.log
+.DS_Store

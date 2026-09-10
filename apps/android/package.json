@@ -1,0 +1,14 @@
+{
+  "name": "@hypir/android",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "android": "react-native run-android", "start": "react-native start" },
+  "dependencies": {
+    "@hyperview/transformers": "latest",
+    "hyperview": "latest",
+    "react": "latest",
+    "react-native": "latest",
+    "react-native-sse": "latest"
+  },
+  "devDependencies": { "@react-native-community/cli": "latest", "typescript": "latest" }
+}
