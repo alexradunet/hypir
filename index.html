@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b0f" />
+    <title>Hypir — Native app development, on device</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <header class="topbar">
+      <a class="brand" href="#">hypir<span class="brand-dot">.</span></a>
+      <nav aria-label="Primary navigation">
+        <a href="#product">Product</a><a href="#workflow">Workflow</a><a href="#developers">Developers</a>
+      </nav>
+      <a class="early-access" href="#access">Get early access <span>↗</span></a>
+    </header>
+
+    <main>
+      <section class="hero" id="product">
+        <div class="eyebrow"><span class="pulse"></span> Android-first agentic development</div>
+        <h1>Build native apps.<br /><em>On the device.</em></h1>
+        <p class="lede">A focused development environment for Hyperview apps. Tell Pi what to build, watch it edit, and see the native result instantly.</p>
+        <div class="hero-actions">
+          <a class="primary-button" href="#access">Join the private beta <span>→</span></a>
+          <a class="text-button" href="#workflow"><span class="play">▶</span> See how it works</a>
+        </div>
+        <div class="hero-visual" aria-label="Hypir application preview">
+          <div class="glow"></div>
+          <div class="app-window">
+            <div class="window-bar">
+              <div class="window-brand"><span class="mini-mark">h.</span><strong>todo-hyperview</strong><span class="branch">⌘ main</span></div>
+              <div class="window-status"><span class="status-dot"></span> LIVE <span class="device">Pixel 9 ▾</span></div>
+            </div>
+            <div class="workspace">
+              <aside class="chat-panel">
+                <div class="panel-title"><span>π</span> PI AGENT</div>
+                <div class="chat-scroll">
+                  <div class="message user-message">Make the add button floating and use our accent color.</div>
+                  <div class="activity"><span class="check">✓</span><div><strong>Read</strong><small>screens/home.xml</small></div></div>
+                  <div class="activity active"><span class="spinner"></span><div><strong>Editing styles</strong><small>8 lines changed</small></div></div>
+                  <div class="code-diff"><span>- position: relative</span><span>+ position: absolute</span><span>+ bottom: 24</span></div>
+                  <div class="activity"><span class="check">✓</span><div><strong>Preview updated</strong><small>Rendered in 46ms</small></div></div>
+                  <div class="message agent-message">Done — the add button now floats above the list and uses the lime accent.</div>
+                </div>
+                <div class="composer">Ask Pi to change something…<button aria-label="Send message">↑</button></div>
+              </aside>
+              <section class="preview-panel">
+                <div class="preview-head"><span>LIVE APP</span><div><button>↻</button><button>⋯</button></div></div>
+                <div class="phone">
+                  <div class="phone-status"><span>9:41</span><span>▮ ᴡɪꜰɪ ◉</span></div>
+                  <div class="phone-content">
+                    <p class="date">THURSDAY, SEPT 10</p><h2>Today</h2>
+                    <div class="progress"><span></span></div><p class="progress-label">2 of 5 complete</p>
+                    <ul><li class="done"><i>✓</i><span>Review launch brief</span></li><li class="done"><i>✓</i><span>Fix authentication flow</span></li><li><i></i><span>Prepare release notes</span></li><li><i></i><span>Book design review</span></li><li><i></i><span>Ship the beta build</span></li></ul>
+                    <button class="add-button">+</button>
+                  </div>
+                  <div class="home-indicator"></div>
+                </div>
+              </section>
+            </div>
+            <div class="tabs"><span>⌘ Editor</span><span class="selected">▣ Preview</span><span>⌖ Inspector</span><span>⇄ Network <b>3</b></span><span>›_ Terminal</span><small>Connected to localhost:4747</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof"><p>THE FASTEST PATH FROM INTENT TO NATIVE UI</p><div><span>Real native rendering</span><span>Zero rebuilds</span><span>Agent-verified changes</span></div></section>
+      <section class="features" id="workflow">
+        <article><span>01</span><h3>Describe the change</h3><p>Talk to Pi in context. It understands your project, your screens, and Hyperview's behavior model.</p></article>
+        <article><span>02</span><h3>Watch it work</h3><p>Follow every file read, edit, command, and validation in a transparent activity stream.</p></article>
+        <article><span>03</span><h3>See it natively</h3><p>Changes appear immediately through a real Hyperview renderer — right on the Android device.</p></article>
+      </section>
+      <section class="cta" id="access"><div><p>PRIVATE BETA</p><h2>The phone is your<br />new dev environment.</h2></div><a class="primary-button" href="mailto:beta@hypir.dev">Request access <span>→</span></a></section>
+    </main>
+    <footer id="developers"><a class="brand" href="#">hypir<span class="brand-dot">.</span></a><p>Built for the next generation of native software.</p><span>© 2026 Hypir</span></footer>
+    <script src="script.js"></script>
+  </body>
+</html>
