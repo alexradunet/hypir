@@ -1,6 +1,6 @@
 # Hypir
 
-An Android-first development environment for native Hyperview apps. The current implementation includes a runnable React Native Android host, a Node.js project daemon, live HXML preview refresh, connection controls, and request inspection. Pi agent/session integration is planned, not implemented. The presentation includes a clearly labeled product concept rather than an interactive demo.
+An Android and Linux development environment for Hyperview apps. The current implementation includes a React Native Android host, a standalone Electron Linux client, a Node.js project daemon, live HXML preview refresh, connection controls, and request inspection. Android uses native widgets; Linux uses Hyperview's web implementations through React Native Web. Pi agent/session integration is planned, not implemented. The presentation includes a clearly labeled product concept rather than an interactive demo.
 
 The next feature milestone—reversible Pi editing, HXML diagnostics, and last-good native previews—is specified in [implementation plan #4](https://github.com/alexradunet/hypir/issues/4). That plan is not a claim that agent features have already shipped.
 
@@ -19,9 +19,23 @@ Android app <-- http://127.0.0.1:4747 --> Termux daemon
 
 The app renders actual native Hyperview components, not a WebView. The Node runtime and project filesystem live in **Termux**, outside the app's JavaScript runtime. Termux runs natively on Android: the app and daemon share Android loopback, so same-device connections need no port forwarding, Debian, proot, or virtual machine.
 
+On Linux, both processes run directly on the desktop:
+
+```text
+Linux desktop
+├── Hypir desktop window (Electron + React Native Web + Hyperview)
+└── Node.js daemon + local project files
+
+Desktop window <-- isolated main-process transport --> http://127.0.0.1:4747
+```
+
+The Linux client shares its connection state machine, HXML renderer integration, and request inspector with Android. It does not require Termux, an Android emulator, Metro, or an Android SDK. Desktop controls are browser-backed, not Android widgets; use the Android app when verifying exact mobile appearance and behavior.
+
 | Directory                  | Purpose                                                                 |
 | -------------------------- | ----------------------------------------------------------------------- |
 | `apps/android`             | React Native app, Android Gradle host, native preview and connection UI |
+| `apps/desktop`             | Standalone Linux window, isolated daemon transport and packaging        |
+| `packages/client`          | Shared Android/desktop connection, live preview and inspection UI       |
 | `packages/daemon`          | Linux project server, file watcher, authenticated HTTP/SSE endpoints    |
 | `packages/protocol`        | Shared version-1 runtime validators and TypeScript declarations         |
 | `examples/hello-hyperview` | Runnable HXML project                                                   |
@@ -108,9 +122,49 @@ The daemon serves plain HTTP. Bearer authentication does **not** encrypt traffic
 
 The compatible Hyperview/React Native dependency stack still has upstream npm advisories. Run `npm audit` before distributing builds. In particular, `image-size` has [unpatched image-parser denial-of-service advisories](https://github.com/advisories/GHSA-w3rx-r6r6-pgpr); `decode-uri-component` and `fast-xml-parser` also require dependency migrations beyond the pinned compatible stack. A Lodash security override and compatible Babel/CLI updates are applied; the audit is **not clean**, and incompatible forced upgrades are not a safe fix. Keep Metro on loopback (the default start command does this), build only trusted native source/assets, and do not treat this development build as production-hardened.
 
+## Run the standalone Linux app
+
+Install Node.js **22.12 or newer** (Node 24 LTS recommended), npm, and Git on a Linux desktop, then:
+
+```bash
+git clone https://github.com/alexradunet/hypir.git
+cd hypir
+npm ci
+read -rsp 'Daemon token: ' HYPIR_TOKEN; printf '\n'
+export HYPIR_TOKEN
+npm run dev
+```
+
+In a second terminal at the repository root:
+
+```bash
+npm run desktop
+```
+
+Enter `http://127.0.0.1:4747` and the same token in the desktop window, then connect. Edit `examples/hello-hyperview/screens/index.xml` with your Linux editor; the preview refreshes without rebuilding the desktop application. The daemon remains a separate process: leave its terminal running and stop it with Ctrl+C when finished.
+
+To build a redistributable Linux application directory:
+
+```bash
+npm run build:desktop
+```
+
+On x86_64 Linux, run `apps/desktop/dist/hypir-linux-x64/hypir`. Packaging targets the host architecture; outputs are under `apps/desktop/dist/`. Distribute the **whole application directory**, not just its executable. The packaged client includes its JavaScript bundle, third-party license notices, and Electron runtime; it does not need Node/npm, Metro, or an Android SDK to launch. The separate daemon still needs Node.js and its project dependencies. Packaging does not install a launcher, change your desktop configuration, or publish a release.
+
+Run Electron as your normal desktop user with Chromium sandbox support enabled. Do not run it as root or add `--no-sandbox`. Distribution-specific Electron system libraries and sandbox policy still apply.
+
+### Desktop rendering and security
+
+- HXML uses the same Hyperview library as Android, selecting upstream web implementations and React Native Web controls. This is a working preview, not a screenshot or an embedded Android emulator.
+- Browser layout, fonts, date pickers, keyboard handling, scrolling, and platform-specific behavior differ from Android. Android-only integrations are not made desktop-compatible by packaging.
+- The desktop window is restricted to its own bundled UI and the selected daemon's `/api/` and `/preview/` resources. Arbitrary external pages, embedded websites, and direct remote assets are blocked; external navigation is not a general-purpose browser feature.
+- Credentials are kept in the Electron main process for the current connection, not saved in preferences. The renderer receives a synthetic endpoint rather than the token. Reconnecting invalidates the old endpoint and cancels its requests.
+- The daemon's browser-origin rejection remains enabled. The isolated main-process transport sends authenticated requests without exposing a general browser API, disables redirects, and does not forward browser cookies. The Electron renderer retains sandboxing, context isolation, and web security.
+- Prefer local loopback. If the daemon is remote, use HTTPS: bearer tokens do not encrypt plain HTTP.
+
 ## Desktop development and checks
 
-Use a Linux development machine with Node.js **20 or newer** and npm. Desktop daemon access uses Linux `/proc/self/fd` for secure filesystem access. Unlike the lean Termux runtime install, development checks and native builds need the full root workspace dependencies, including development dependencies:
+Use a Linux development machine with Node.js **22.12 or newer** (Node 24 LTS recommended) and npm for the full workspace. The current Electron tooling requires this newer development baseline; the lean daemon still supports Node 20, including in Termux. Desktop daemon access uses Linux `/proc/self/fd` for secure filesystem access. Unlike the lean runtime install, development checks and application builds need the full root workspace dependencies, including development dependencies:
 
 ```bash
 npm ci
@@ -119,7 +173,7 @@ npm run check
 npm run typecheck
 ```
 
-CI and reproducible clean installs use the committed lockfile. `npm test` runs protocol/daemon regression tests; `npm run check` checks JavaScript syntax; `npm run typecheck` checks the Android TypeScript application against its real dependencies. Android SDK tools are only required for building/running the native app, not these JavaScript checks.
+CI and reproducible clean installs use the committed lockfile. CI checks the lean daemon on Node 20 and the full workspace on Node 24. `npm test` runs protocol, daemon, and desktop transport regression tests; `npm run check` checks JavaScript syntax; `npm run typecheck` checks the shared client and platform applications against their real dependencies. Android SDK tools are only required for building/running the Android app, not the Linux client or these JavaScript checks.
 
 `npm run format` and `npm run format:check` apply the shared Prettier rules to project code and the presentation, excluding native/generated files and local agent configuration. `npm run bundle` checks Metro's production Android bundle without requiring an Android SDK; outputs go to the ignored `apps/android/build/` directory. Run `npm ci` before these desktop commands if this checkout previously had only the daemon-only install.
 
@@ -127,7 +181,7 @@ CI and reproducible clean installs use the committed lockfile. `npm test` runs p
 
 Build on a development machine with:
 
-- Node/npm and root workspace dependencies installed.
+- Node 22.12+ and npm, with root workspace dependencies installed.
 - **JDK 17**.
 - Android SDK **Platform 35**, **Build-Tools 35.0.0**, platform-tools (`adb`), and the SDK/NDK components requested by Gradle. Accept the SDK licenses.
 - `ANDROID_HOME` pointing to the SDK and its `platform-tools` on `PATH` (or configure `sdk.dir` in the ignored `apps/android/android/local.properties`).
@@ -200,10 +254,14 @@ Open `http://localhost:4173`. The standard Python server has its own missing-pag
 
 `.github/workflows/pages.yml` uploads **only `docs/`** when those files change on `main`, or on manual dispatch. Select **GitHub Actions** as the repository's Pages source. The workflow stamps the deployment's configured base path into the 404 home link, so nested missing URLs return to the correct project Pages or domain-root home without guessing a repository name; local root deployment defaults to `/`. A manually hosted subdirectory should set that same `docs/404.html` home link to its deployment base.
 
-`.github/workflows/ci.yml` installs with `npm ci` and runs tests, JavaScript syntax checks, and Android TypeScript checks on Node 20 and 24. Node 24 additionally checks formatting, produces a native JavaScript bundle to catch Metro/package-resolution failures, and verifies that the regression suite works after a daemon-only install. These checks do not build an APK or establish on-device Termux compatibility; native builds and end-to-end device verification remain separate.
+`.github/workflows/ci.yml` tests the lean daemon runtime on Node 20 and installs the full locked workspace on Node 24. Both run regression tests and JavaScript syntax checks. Node 24 also checks shared/platform TypeScript and formatting, produces the Android JavaScript bundle and Linux application package, and repeats tests after a daemon-only install. These checks do not build an APK or establish on-device Termux compatibility; native builds and end-to-end device verification remain separate.
 
 ## Verified development scenarios
 
 The Android API 35 x86_64 emulator was exercised against a Linux host daemon through `adb reverse`. The debug APK was built for both ARM64 and x86_64 with JDK 17. Verified scenarios include the shipped example, a nested manifest entrypoint, live HXML edits, populated native date-field interaction, starting the daemon after the app, daemon restart with a changed manifest, background/foreground resynchronization, token rejection/recovery, incompatible protocol rejection, and preventing an authenticated redirect from reaching another origin.
 
 The daemon/protocol regression suite also passes from an actual Termux terminal on the Android API 35 x86_64 emulator: Termux v0.118.3 (official GitHub debug build), updated Termux packages, and native Android Node.js v24.18.0. The daemon-only install adds two workspace packages without React Native or development dependencies. Verified native app-to-Termux behavior includes token rejection/recovery, live HXML edits, daemon stop/restart, and foreground resynchronization. Port 4747 has **no `adb reverse` rule** in this test; only Metro's port 8081 is forwarded. Physical ARM64 devices, Android 7, and vendor-specific battery/process-killing policies still need representative device testing.
+
+The standalone Linux client was exercised on x86_64 Linux with Electron 44.3.0, both from source and from the packaged executable launched outside the repository working directory. Verified scenarios include authentication rejection/recovery, live HXML edits, text entry, picker selection, calendar date selection, stack navigation, daemon restart with a changed manifest entrypoint, and continued live updates from the packaged app. Renderer access to Node APIs, direct daemon networking, and local files is blocked. The shared preview now supplies the navigation container required by HXML stack navigators.
+
+The 24 protocol/daemon/desktop transport regression tests pass on Node 20 after a lean daemon install and on Node 24 after a full locked install. Full workspace TypeScript, syntax, formatting, Android production bundle, and Linux packaging checks pass. The extracted shared client was also exercised in the Android API 35 emulator: authentication recovery, live preview refresh, and stack navigation to another HXML screen work. Linux ARM64 packages, other distributions, and Android-specific device integrations in desktop HXML remain unverified; desktop previews are not an Android rendering-fidelity guarantee.

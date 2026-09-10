@@ -24,13 +24,18 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - name: Install locked workspaces
+      - name: Install locked development workspaces
+        if: matrix.node == 24
         run: npm ci
-      - name: Test protocol and daemon
+      - name: Install lean daemon runtime
+        if: matrix.node == 20
+        run: npm run install:daemon
+      - name: Test protocol, daemon and desktop boundary
         run: npm test
       - name: Check JavaScript syntax
         run: npm run check
-      - name: Check Android TypeScript
+      - name: Check client TypeScript
+        if: matrix.node == 24
         run: npm run typecheck
       - name: Check project formatting
         if: matrix.node == 24
@@ -38,6 +43,9 @@ jobs:
       - name: Verify native JavaScript bundle
         if: matrix.node == 24
         run: npm run bundle --workspace @hypir/android -- --max-workers 2
+      - name: Package standalone Linux client
+        if: matrix.node == 24
+        run: npm run build:desktop
       - name: Verify lean daemon runtime
         if: matrix.node == 24
         run: npm run install:daemon && npm test

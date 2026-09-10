@@ -13,6 +13,9 @@ local.properties
 !debug.keystore
 .metro-health-check*
 
+# Packaged Linux application
+apps/desktop/dist/
+
 # Local credentials
 .env
 .env.*

@@ -7,7 +7,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 
 async function checkDirectory(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (['node_modules', 'build'].includes(entry.name) || entry.name.startsWith('.')) continue;
+    if (['node_modules', 'build', 'dist'].includes(entry.name) || entry.name.startsWith('.'))
+      continue;
     const filename = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       await checkDirectory(filename);

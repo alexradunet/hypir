@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#080b0f" />
     <meta
       name="description"
-      content="Hypir is an Android-first agentic development environment for native Hyperview apps."
+      content="Hypir is a development environment for Hyperview apps on Android and Linux."
     />
-    <title>Hypir — Native development, on device</title>
+    <title>Hypir — Hyperview development on Android and Linux</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -25,8 +25,8 @@
 
     <main id="top" tabindex="-1">
       <section class="hero" id="product">
-        <p class="eyebrow"><i></i> Android-first agentic development</p>
-        <h1>Build native apps.<br /><span>On the device.</span></h1>
+        <p class="eyebrow"><i></i> Hyperview development · Android and Linux</p>
+        <h1>Build native apps.<br /><span>From phone or desktop.</span></h1>
         <p class="lead">
           A focused development environment for Hyperview apps. Tell Pi what to build, watch it
           edit, and see the native result instantly.
@@ -96,15 +96,15 @@
           </div>
         </div>
         <p class="concept-note">
-          Product concept shown above. The current app connects to a daemon and renders live
-          Hyperview previews; Pi session integration is not yet included.
+          Product concept shown above. The Android and Linux clients connect to a daemon and render
+          live Hyperview previews; Pi session integration is not yet included.
         </p>
       </section>
 
       <section class="proof">
-        <p>FROM HXML TO NATIVE UI</p>
+        <p>FROM HXML TO LIVE UI</p>
         <div>
-          <span>◆ Real native rendering</span><span>◆ No HXML rebuilds</span
+          <span>◆ Native Android rendering</span><span>◆ Standalone Linux client</span
           ><span>◆ Live preview updates</span>
         </div>
       </section>
@@ -127,16 +127,16 @@
         </article>
         <article>
           <b>03</b>
-          <h2>See it natively</h2>
+          <h2>See the result</h2>
           <p>
-            The current app renders HXML through a real Hyperview renderer and refreshes when the
-            daemon reports changes.
+            Both clients render HXML through Hyperview and refresh when the daemon reports changes.
+            Android uses native widgets; Linux uses browser-backed desktop controls.
           </p>
         </article>
       </section>
       <section class="architecture" id="architecture" aria-labelledby="architecture-title">
-        <p class="eyebrow">TWO RUNTIMES, ONE DEVICE</p>
-        <h2 id="architecture-title">Native Android. Termux-powered tools.</h2>
+        <p class="eyebrow">TWO PLATFORMS, ONE PROJECT</p>
+        <h2 id="architecture-title">Android with Termux. Linux without an emulator.</h2>
         <p>
           The Android app hosts React Native and the real Hyperview renderer. A Node.js daemon runs
           natively in Termux, serves project screens, and streams file-change events. No Debian,
@@ -144,9 +144,9 @@
         </p>
         <p>
           The app and Termux share Android loopback at <code>http://127.0.0.1:4747</code>:
-          same-device connections need no port forwarding. Desktop development with a host daemon
-          uses <code>adb reverse</code> instead; remove its port 4747 rule before testing Termux on
-          the same device.
+          same-device connections need no port forwarding. The Linux desktop client connects
+          directly to a Linux daemon through an isolated Electron transport, without an Android SDK,
+          emulator, or Metro server.
         </p>
         <p>
           Project files stay in Termux's private home directory, outside the app's JavaScript
@@ -154,15 +154,25 @@
           Android 7; Android background restrictions can still interrupt a session.
         </p>
         <p>
-          The current implementation provides native preview, connection controls, and request
-          inspection. Reversible agent editing and validated preview publication are the next
-          feature milestone; agent sessions remain planned.
+          On Linux, run <code>npm ci</code>, start the daemon with <code>npm run dev</code>, and
+          launch the client with <code>npm run desktop</code> in another terminal. Hyperview's web
+          implementations power its preview; use Android for exact mobile appearance and behavior.
+          See the
+          <a href="https://github.com/alexradunet/hypir#run-the-standalone-linux-app"
+            >Linux setup guide</a
+          >
+          for authentication and packaging.
+        </p>
+        <p>
+          Both clients provide live preview, connection controls, and request inspection. Reversible
+          agent editing and validated preview publication are the next feature milestone; agent
+          sessions remain planned.
         </p>
       </section>
       <section class="access" id="access">
         <div>
           <small>PRIVATE BETA</small>
-          <h2>The phone is your<br />new dev environment.</h2>
+          <h2>Your project.<br />Phone or desktop.</h2>
         </div>
         <a class="button" href="mailto:beta@hypir.dev">Request access <b>→</b></a>
       </section>
