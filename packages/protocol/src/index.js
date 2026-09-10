@@ -1,7 +1,43 @@
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+
+// Existing Hyperview element/behavior names supported by the shared hosts.
+// This is a conservative rendering contract, not a sandbox or fidelity promise.
+export const SHARED_HXML_CAPABILITIES = Object.freeze([
+  'view',
+  'text',
+  'image',
+  'list',
+  'section-list',
+  'text-field',
+  'date-field',
+  'picker-field',
+  'option',
+  'select-single',
+  'select-multiple',
+  'switch',
+  'spinner',
+  'form',
+  'behavior',
+  'navigator',
+  'push',
+  'back',
+  'replace',
+  'replace-inner',
+  'reload',
+  'append',
+  'prepend',
+]);
+const capabilities = (value) =>
+  Array.isArray(value) &&
+  value.length <= 64 &&
+  value.every((name) => typeof name === 'string' && /^[a-z][a-z0-9.-]{0,63}$/.test(name)) &&
+  new Set(value).size === value.length;
+export const unsupportedCapabilities = (required = []) =>
+  required.filter((name) => !SHARED_HXML_CAPABILITIES.includes(name));
 
 export const eventTypes = Object.freeze({
   connected: 'daemon.connected',
+  workspaceChanged: 'workspace.changed',
   previewInvalidate: 'preview.invalidate',
 });
 
@@ -24,10 +60,11 @@ function screenPath(value) {
   }
 }
 
-function manifest(value) {
+export function validateManifest(value) {
   return (
     record(value) &&
     text(value.name) &&
+    (value.capabilities === undefined || capabilities(value.capabilities)) &&
     screenPath(value.entrypoint) &&
     text(value.screens) &&
     !value.screens.startsWith('/') &&
@@ -36,6 +73,31 @@ function manifest(value) {
       .every(
         (part) => part && part !== '.' && part !== '..' && !/[\\\u0000-\u001f\u007f]/u.test(part),
       )
+  );
+}
+
+function snapshot(value) {
+  return (
+    record(value) &&
+    validateManifest(value.project) &&
+    record(value.app) &&
+    text(value.app.id) &&
+    /^[a-zA-Z0-9_-]+$/.test(value.app.id) &&
+    value.app.kind === 'app' &&
+    value.app.execution === 'active' &&
+    value.app.name === value.project.name &&
+    text(value.app.projectRoot) &&
+    value.app.projectRoot.startsWith('/') &&
+    capabilities(value.app.unsupportedCapabilities) &&
+    JSON.stringify(value.app.unsupportedCapabilities) ===
+      JSON.stringify(unsupportedCapabilities(value.project.capabilities)) &&
+    value.app.entrypoint === `/apps/${value.app.id}/screens${value.project.entrypoint}` &&
+    record(value.workspace) &&
+    value.workspace.id === 'hypir.workspace' &&
+    value.workspace.kind === 'workspace' &&
+    value.workspace.path === '/workspace' &&
+    (value.workspace.selectedAppId === null || value.workspace.selectedAppId === value.app.id) &&
+    integer(value.workspace.revision)
   );
 }
 
@@ -48,7 +110,11 @@ function validateEvent(event) {
   ) {
     throw new TypeError('Invalid protocol event');
   }
-  if (event.type === eventTypes.connected && manifest(event.payload.project)) return event;
+  if (
+    [eventTypes.connected, eventTypes.workspaceChanged].includes(event.type) &&
+    snapshot(event.payload)
+  )
+    return event;
   if (
     event.type === eventTypes.previewInvalidate &&
     screenPath(event.payload.path) &&
@@ -80,7 +146,7 @@ export function parseStatus(value) {
   if (
     !record(value) ||
     value.protocolVersion !== PROTOCOL_VERSION ||
-    !manifest(value.project) ||
+    !snapshot(value) ||
     !integer(value.connectedClients)
   ) {
     throw new TypeError('Invalid daemon status');

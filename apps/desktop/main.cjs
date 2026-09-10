@@ -28,6 +28,11 @@ const ASSETS = new Map([
   [`${APP_ORIGIN}/renderer.css`, ['renderer.css', 'text/css; charset=utf-8']],
 ]);
 const proxy = createDaemonProxy();
+const recoveryProxy = createDaemonProxy({ scope: 'recovery' });
+const closeTransports = () => {
+  proxy.close();
+  recoveryProxy.close();
+};
 let window;
 let desktopSession;
 
@@ -64,7 +69,7 @@ async function start() {
     const isAsset =
       assets.has(details.url) && (details.method === 'GET' || details.method === 'HEAD');
     const isDaemon =
-      proxy.accepts(details.url) &&
+      (proxy.accepts(details.url) || recoveryProxy.accepts(details.url)) &&
       !['mainFrame', 'subFrame', 'script', 'stylesheet', 'font', 'object', 'cspReport'].includes(
         details.resourceType,
       );
@@ -85,6 +90,7 @@ async function start() {
         },
       });
     }
+    if (recoveryProxy.accepts(request.url)) return recoveryProxy.handle(request);
     return proxy.accepts(request.url) ? proxy.handle(request) : deny();
   });
 
@@ -120,7 +126,7 @@ async function start() {
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
   window.webContents.on('page-title-updated', (event) => event.preventDefault());
   window.webContents.on('render-process-gone', () => {
-    proxy.close();
+    closeTransports();
     app.quit();
   });
   ipcMain.handle('hypir:connect', (event, value) => {
@@ -128,17 +134,23 @@ async function start() {
       throw new Error('Connection sender is not allowed');
     return proxy.connect(value);
   });
+  ipcMain.handle('hypir:connect-recovery', (event, value) => {
+    if (!isAppSender(event, window?.webContents))
+      throw new Error('Connection sender is not allowed');
+    return recoveryProxy.connect(value);
+  });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => {
-    proxy.close();
+    closeTransports();
     window = undefined;
     ipcMain.removeHandler('hypir:connect');
+    ipcMain.removeHandler('hypir:connect-recovery');
     app.quit();
   });
   await window.loadURL(APP_URL);
 }
 
-app.on('before-quit', () => proxy.close());
+app.on('before-quit', closeTransports);
 app.on('window-all-closed', () => app.quit());
 app
   .whenReady()
@@ -146,6 +158,6 @@ app
   .catch(() => {
     // Do not log exception objects: networking/IPC exceptions can include secrets.
     console.error('Hypir could not start. Ensure the desktop bundle has been built.');
-    proxy.close();
+    closeTransports();
     app.exit(1);
   });

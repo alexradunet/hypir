@@ -19,7 +19,10 @@ const result = await build({
   platform: 'browser',
   format: 'iife',
   target: 'chrome148',
-  minify: true,
+  // esbuild 0.28.2 syntax minification drops React Navigation's hydratedState binding.
+  // Keep its onStateChange callback intact while compressing names and whitespace.
+  minifyWhitespace: true,
+  minifyIdentifiers: true,
   legalComments: 'inline',
   mainFields: ['browser', 'module', 'main'],
   resolveExtensions: [

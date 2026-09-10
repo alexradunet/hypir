@@ -8,6 +8,7 @@
     "examples/*"
   ],
   "scripts": {
+    "build:android:standalone": "npm run build:standalone --workspace @hypir/android",
     "dev": "node packages/daemon/src/cli.js --project examples/hello-hyperview",
     "install:daemon": "npm ci --workspace @hypir/daemon --include-workspace-root=false --omit=dev",
     "test": "node --test packages/*/src/*.test.js apps/desktop/*.test.cjs",

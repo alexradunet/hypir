@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { parseStatus, PROTOCOL_VERSION } from '@hypir/protocol';
+import { validateManifest } from '@hypir/protocol';
 
 const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const fileFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
@@ -80,7 +80,7 @@ export async function loadProject(projectRoot) {
     } finally {
       await manifestFile.close();
     }
-    parseStatus({ protocolVersion: PROTOCOL_VERSION, project: manifest, connectedClients: 0 });
+    if (!validateManifest(manifest)) throw new TypeError('Invalid project manifest');
     directory = await openChild(rootDirectory, manifest.screens.split('/'), directoryFlags);
     const project = { root, screens: path.join(root, manifest.screens), directory, manifest };
     await readScreen(project, manifest.entrypoint.slice(1));

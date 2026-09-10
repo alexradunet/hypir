@@ -13,10 +13,12 @@ const REQUEST_HEADERS = [
   'last-event-id',
   'x-requested-with',
   'x-hyperview-version',
+  'x-hypir-protocol-version',
   'x-hyperview-dimensions',
 ];
 const RESPONSE_HEADERS = [
   'content-type',
+  'x-hypir-context',
   'content-range',
   'accept-ranges',
   'etag',
@@ -112,7 +114,14 @@ function failure(status, message) {
   });
 }
 
-function createDaemonProxy() {
+function createDaemonProxy({ scope = 'daemon' } = {}) {
+  if (!['daemon', 'recovery'].includes(scope)) throw new TypeError('Invalid transport scope');
+  const recoveryPaths = new Set([
+    '/recovery/v1/status',
+    '/recovery/v1/start',
+    '/recovery/v1/stop',
+    '/recovery/v1/recover',
+  ]);
   let generation = 0;
   let connection;
   let closed = false;
@@ -127,7 +136,7 @@ function createDaemonProxy() {
     const validated = validateConnection(value);
     abortPending();
     generation += 1;
-    connection = { ...validated, origin: `http://daemon-${generation}.hypir.local` };
+    connection = { ...validated, origin: `http://${scope}-${generation}.hypir.local` };
     return { endpoint: connection.origin, token: '' };
   }
 
@@ -140,7 +149,12 @@ function createDaemonProxy() {
         !url.username &&
         !url.password &&
         !url.hash &&
-        (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/'))
+        (scope === 'recovery'
+          ? recoveryPaths.has(url.pathname) && !url.search
+          : url.pathname.startsWith('/api/') ||
+            url.pathname === '/workspace' ||
+            url.pathname.startsWith('/workspace/') ||
+            url.pathname.startsWith('/apps/'))
       );
     } catch {
       return false;

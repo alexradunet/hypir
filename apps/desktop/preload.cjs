@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld(
   'hypir',
   Object.freeze({
     connect: (connection) => ipcRenderer.invoke('hypir:connect', connection),
+    connectRecovery: (connection) => ipcRenderer.invoke('hypir:connect-recovery', connection),
   }),
 );

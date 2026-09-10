@@ -44,6 +44,13 @@ async function start(f, options = {}) {
   const daemon = await createDaemon({ projectRoot: f.root, port: 0, ...options });
   f.closers.push(() => daemon.close());
   const address = await daemon.listen();
+  const response = await request(
+    address.port,
+    '/api/status',
+    options.token ? { Authorization: `Bearer ${options.token}` } : {},
+  );
+  const status = parseStatus(JSON.parse(response.body));
+  f.appPrefix = `/apps/${status.app.id}/screens`;
   return { daemon, port: address.port };
 }
 
@@ -112,12 +119,12 @@ test('serves a validated manifest and nested regular XML without browser CORS', 
   const status = await request(port, '/api/status');
   assert.equal(status.status, 200);
   assert.deepEqual(parseStatus(JSON.parse(status.body)).project, f.manifest);
-  const response = await request(port, `/preview${f.manifest.entrypoint}?generation=2`);
+  const response = await request(port, `${f.appPrefix}${f.manifest.entrypoint}?generation=2`);
   assert.equal(response.status, 200);
   assert.match(response.headers['content-type'], /hyperview\+xml/u);
   assert.equal(response.headers['access-control-allow-origin'], undefined);
   assert.equal(response.body, xml);
-  assert.equal((await request(port, '/preview/missing.xml')).status, 404);
+  assert.equal((await request(port, `${f.appPrefix}/missing.xml`)).status, 404);
 });
 
 test('loads real projects on Android without weakening descriptor-relative containment', async (t) => {
@@ -182,11 +189,11 @@ test('rejects malformed URLs and Host without losing subsequent requests or leak
   const f = await fixture(t);
   const { port } = await start(f);
   for (const [pathname, headers] of [
-    ['/preview/%', {}],
-    ['/preview/%2e%2e/outside/secret.xml', {}],
-    ['/preview/%2fetc/passwd.xml', {}],
-    ['/preview/flows%5cstart.xml', {}],
-    ['/preview/%00.xml', {}],
+    [`${f.appPrefix}/%`, {}],
+    [`${f.appPrefix}/%2e%2e/outside/secret.xml`, {}],
+    [`${f.appPrefix}/%2fetc/passwd.xml`, {}],
+    [`${f.appPrefix}/flows%5cstart.xml`, {}],
+    [`${f.appPrefix}/%00.xml`, {}],
     ['/api/status', { host: '[' }],
     ['/api/status', { host: 'localhost:99999' }],
     ['/api/status', { host: 'user@localhost' }],
@@ -208,16 +215,16 @@ test('denies external and internal symlinks including swapped path components', 
   await rename(path.join(f.screens, 'flows'), path.join(f.screens, 'original'));
   await symlink(f.outside, path.join(f.screens, 'flows'));
   for (const name of ['secret.xml', 'external/secret.xml', 'internal.xml', 'flows/secret.xml']) {
-    const response = await request(port, `/preview/${name}`);
+    const response = await request(port, `${f.appPrefix}/${name}`);
     assert.equal(response.status, 400);
     assert.ok(!response.body.includes('outside-secret'));
     assert.ok(!response.body.includes(f.outside));
   }
-  assert.equal((await request(port, '/preview/original/start.xml')).body, xml);
+  assert.equal((await request(port, `${f.appPrefix}/original/start.xml`)).body, xml);
   // Replacing the entire screens pathname cannot redirect the pinned root FD.
   await rename(f.screens, path.join(f.root, 'original-screens'));
   await symlink(f.outside, f.screens);
-  const swapped = await request(port, '/preview/secret.xml');
+  const swapped = await request(port, `${f.appPrefix}/secret.xml`);
   assert.equal(swapped.status, 400);
   assert.ok(!swapped.body.includes('outside-secret'));
 });
@@ -252,7 +259,7 @@ test('requires tokens off loopback and enforces bearer auth and Origin rejection
   await assert.rejects(createDaemon({ projectRoot: f.root, host: '::', port: 0 }), TypeError);
   await assert.rejects(createDaemon({ projectRoot: f.root, port: NaN }), TypeError);
   const { port } = await start(f, { token: 'a-private-token' });
-  for (const pathname of ['/api/status', '/api/events', '/preview/flows/start.xml']) {
+  for (const pathname of ['/api/status', '/api/events', `${f.appPrefix}/flows/start.xml`]) {
     assert.equal((await request(port, pathname)).status, 401);
     assert.equal((await request(port, pathname, { authorization: 'Bearer wrong' })).status, 401);
     assert.equal(
@@ -266,8 +273,11 @@ test('requires tokens off loopback and enforces bearer auth and Origin rejection
     200,
   );
   assert.equal(
-    (await request(port, '/preview/flows/start.xml', { authorization: 'Bearer a-private-token' }))
-      .body,
+    (
+      await request(port, `${f.appPrefix}/flows/start.xml`, {
+        authorization: 'Bearer a-private-token',
+      })
+    ).body,
     xml,
   );
   const events = await stream(f, port, { authorization: 'Bearer a-private-token' });
@@ -298,7 +308,7 @@ test(
       (event) => event.payload.path === '/flows/removed.xml',
     );
     assert.ok(second.payload.revision > first.payload.revision);
-    assert.equal((await request(port, '/preview/flows/removed.xml')).status, 404);
+    assert.equal((await request(port, `${f.appPrefix}/flows/removed.xml`)).status, 404);
     const reconnect = await stream(f, port);
     assert.deepEqual((await reconnect.event(eventTypes.connected)).payload.project, f.manifest);
     const disconnected = new Promise((resolve) => {
@@ -470,3 +480,108 @@ test(
     await assert.rejects(request(port, '/api/status'));
   },
 );
+
+test('workspace selects the registered project through authenticated HXML action and snapshots', async (t) => {
+  const f = await fixture(t);
+  const { port } = await start(f, { token: 'workspace-test' });
+  const headers = { Authorization: 'Bearer workspace-test', 'X-Hypir-Protocol-Version': '2' };
+  const status = parseStatus(JSON.parse((await request(port, '/api/status', headers)).body));
+  assert.equal(status.workspace.path, '/workspace');
+  assert.equal(status.workspace.selectedAppId, null);
+  assert.equal(status.app.name, f.manifest.name);
+  assert.equal(status.app.projectRoot, f.root);
+  const workspace = await request(port, status.workspace.path, headers);
+  assert.equal(workspace.status, 200);
+  assert.match(workspace.body, /verb="post"/u);
+  const action = /href="([^" ]+)"[^>]*verb="post"/u.exec(workspace.body)?.[1];
+  assert.ok(action, 'workspace supplies an actionable project selection');
+  const events = await stream(f, port, headers);
+  assert.equal((await events.event(eventTypes.connected)).payload.workspace.selectedAppId, null);
+  const rejected = await fetch(`http://127.0.0.1:${port}${action}`, { method: 'POST' });
+  assert.equal(rejected.status, 401);
+  const selected = await fetch(`http://127.0.0.1:${port}${action}`, { method: 'POST', headers });
+  assert.equal(selected.status, 200);
+  const hxml = await selected.text();
+  assert.match(hxml, /^<view[ >]/u);
+  assert.ok(
+    !/<(?:doc|screen|navigator)[ >]/u.test(hxml),
+    'Hyperview mutation returns a replaceable fragment',
+  );
+  assert.ok(hxml.includes(`href="${status.app.entrypoint}"`));
+  assert.equal(
+    (await events.event(eventTypes.workspaceChanged)).payload.workspace.selectedAppId,
+    status.app.id,
+  );
+  assert.equal((await request(port, status.app.entrypoint, headers)).body, xml);
+  const fresh = await stream(f, port, headers);
+  assert.equal(
+    (await fresh.event(eventTypes.connected)).payload.workspace.selectedAppId,
+    status.app.id,
+  );
+  assert.equal((await request(port, '/workspace', headers)).status, 200);
+});
+
+test('workspace reconnect reloads authoritative state and rejects incompatible or path-bearing actions', async (t) => {
+  const f = await fixture(t);
+  const { daemon, port } = await start(f, { token: 'reconnect-test' });
+  const headers = { Authorization: 'Bearer reconnect-test', 'X-Hypir-Protocol-Version': '2' };
+  const before = parseStatus(JSON.parse((await request(port, '/api/status', headers)).body));
+  const action = `http://127.0.0.1:${port}/workspace/select/${before.app.id}`;
+  const incompatible = await fetch(action, {
+    method: 'POST',
+    headers: { ...headers, 'X-Hypir-Protocol-Version': '1' },
+  });
+  assert.equal(incompatible.status, 409);
+  const malformed = await fetch(action, {
+    method: 'POST',
+    headers,
+    body: 'projectRoot=/tmp/other',
+  });
+  assert.equal(malformed.status, 400);
+  assert.equal((await fetch(action, { method: 'POST', headers })).status, 200);
+  const selected = await stream(f, port, headers);
+  assert.equal(
+    (await selected.event(eventTypes.connected)).payload.workspace.selectedAppId,
+    before.app.id,
+  );
+  await daemon.close();
+  await assert.rejects(fetch(action, { method: 'POST', headers }));
+  const restarted = await start(f, { token: 'reconnect-test' });
+  const fresh = await stream(f, restarted.port, headers);
+  const snapshot = (await fresh.event(eventTypes.connected)).payload;
+  assert.equal(snapshot.app.id, before.app.id);
+  assert.equal(
+    snapshot.workspace.selectedAppId,
+    null,
+    'restart must not replay the disconnected selection',
+  );
+  assert.equal(snapshot.workspace.revision, 0);
+  assert.equal((await request(restarted.port, snapshot.app.entrypoint, headers)).body, xml);
+  assert.equal((await request(restarted.port, '/preview/flows/start.xml', headers)).status, 404);
+});
+
+test('workspace reports unsupported declared HXML capabilities before opening an app', async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    f.manifestFile,
+    JSON.stringify({ ...f.manifest, capabilities: ['text', 'camera'] }),
+  );
+  const { port } = await start(f, { token: 'capability-test' });
+  const headers = { Authorization: 'Bearer capability-test', 'X-Hypir-Protocol-Version': '2' };
+  const status = parseStatus(JSON.parse((await request(port, '/api/status', headers)).body));
+  assert.deepEqual(status.app.unsupportedCapabilities, ['camera']);
+  const screen = await request(port, '/workspace', headers);
+  assert.ok(screen.body.includes('camera'));
+  assert.ok(!screen.body.includes(`href="${status.app.entrypoint}"`));
+  const action = await fetch(`http://127.0.0.1:${port}/workspace/select/${status.app.id}`, {
+    method: 'POST',
+    headers,
+  });
+  assert.equal(action.status, 422);
+  assert.equal((await request(port, status.app.entrypoint, headers)).status, 422);
+  assert.equal(
+    parseStatus(JSON.parse((await request(port, '/api/status', headers)).body)).workspace
+      .selectedAppId,
+    null,
+  );
+});

@@ -10,10 +10,29 @@ import {
 } from './index.js';
 
 const project = { name: 'Preview', entrypoint: '/flows/start.xml', screens: 'ui/screens' };
+const snapshot = {
+  project,
+  app: {
+    id: 'test-app',
+    kind: 'app',
+    execution: 'active',
+    name: project.name,
+    projectRoot: '/tmp/project',
+    entrypoint: '/apps/test-app/screens/flows/start.xml',
+    unsupportedCapabilities: [],
+  },
+  workspace: {
+    id: 'hypir.workspace',
+    kind: 'workspace',
+    path: '/workspace',
+    selectedAppId: null,
+    revision: 0,
+  },
+};
 
 test('round trips typed events through SSE data and JSON parsers', () => {
   for (const event of [
-    createEvent(eventTypes.connected, { project }, 42),
+    createEvent(eventTypes.connected, snapshot, 42),
     createEvent(eventTypes.previewInvalidate, { path: '/flows/start.xml', revision: 1 }, 43),
   ]) {
     const [typeLine, dataLine, ...separator] = encodeSse(event).split('\n');
@@ -22,10 +41,10 @@ test('round trips typed events through SSE data and JSON parsers', () => {
     assert.deepEqual(separator, ['', '']);
   }
   assert.deepEqual(
-    parseStatus({ protocolVersion: PROTOCOL_VERSION, project, connectedClients: 2 }),
+    parseStatus({ protocolVersion: PROTOCOL_VERSION, ...snapshot, connectedClients: 2 }),
     {
-      protocolVersion: 1,
-      project,
+      protocolVersion: PROTOCOL_VERSION,
+      ...snapshot,
       connectedClients: 2,
     },
   );
@@ -37,7 +56,7 @@ test('rejects incompatible and malformed event envelopes or payloads', () => {
     null,
     [],
     {},
-    { ...event, version: 2 },
+    { ...event, version: PROTOCOL_VERSION + 1 },
     { ...event, type: 'unknown' },
     { ...event, timestamp: -1 },
     { ...event, timestamp: '42' },
@@ -63,6 +82,8 @@ test('rejects unsafe or unusable project manifests in status and connection even
     {},
     { ...project, name: '' },
     { ...project, name: 5 },
+    { ...project, capabilities: 'text' },
+    { ...project, capabilities: ['text', 'text'] },
     { ...project, screens: undefined },
     { ...project, screens: '/tmp/screens' },
     { ...project, screens: '../screens' },
@@ -82,16 +103,29 @@ test('rejects unsafe or unusable project manifests in status and connection even
   ];
   for (const invalid of invalidProjects) {
     assert.throws(
-      () => parseStatus({ protocolVersion: 1, project: invalid, connectedClients: 0 }),
+      () =>
+        parseStatus({
+          protocolVersion: PROTOCOL_VERSION,
+          ...snapshot,
+          project: invalid,
+          connectedClients: 0,
+        }),
       TypeError,
     );
-    assert.throws(() => createEvent(eventTypes.connected, { project: invalid }), TypeError);
+    assert.throws(
+      () => createEvent(eventTypes.connected, { ...snapshot, project: invalid }),
+      TypeError,
+    );
   }
   for (const invalid of [
-    { protocolVersion: 2, project, connectedClients: 0 },
-    { protocolVersion: 1, project, connectedClients: -1 },
-    { protocolVersion: 1, project, connectedClients: '1' },
-    { protocolVersion: 1, project, connectedClients: Number.MAX_SAFE_INTEGER + 1 },
+    { protocolVersion: PROTOCOL_VERSION + 1, ...snapshot, connectedClients: 0 },
+    { protocolVersion: PROTOCOL_VERSION, ...snapshot, connectedClients: -1 },
+    { protocolVersion: PROTOCOL_VERSION, ...snapshot, connectedClients: '1' },
+    {
+      protocolVersion: PROTOCOL_VERSION,
+      ...snapshot,
+      connectedClients: Number.MAX_SAFE_INTEGER + 1,
+    },
   ])
     assert.throws(() => parseStatus(invalid), TypeError);
 });

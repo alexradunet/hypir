@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import EventSource from 'react-native-sse';
 import {
@@ -7,6 +7,7 @@ import {
   parseStatus,
   type DaemonEvent,
   type ProjectManifest,
+  type WorkspaceSnapshot,
 } from '@hypir/protocol';
 import { daemonHeaders, fetchWithDaemonAuth, type DaemonConnection } from './transport';
 
@@ -27,12 +28,15 @@ class SessionEventSource<T extends string> extends EventSource<T> {
 
 type SessionState = {
   project?: ProjectManifest;
+  workspace?: WorkspaceSnapshot['workspace'];
   generation: number;
   phase: 'connecting' | 'live' | 'offline' | 'error';
   message: string;
 };
 
-export function useDaemon(connection: DaemonConnection): SessionState {
+export function useDaemon(connection: DaemonConnection): SessionState & { disconnect: () => void } {
+  const disconnectHandler = useRef<() => void>(() => {});
+  const disconnect = useCallback(() => disconnectHandler.current(), []);
   const [state, setState] = useState<SessionState>({
     generation: 0,
     phase: 'connecting',
@@ -68,6 +72,9 @@ export function useDaemon(connection: DaemonConnection): SessionState {
       }
     };
 
+    disconnectHandler.current = () =>
+      fail('Disconnected. The action outcome is unknown; reconnecting without replay.');
+
     const connect = async () => {
       if (disposed || !foreground) return;
       stop();
@@ -98,7 +105,11 @@ export function useDaemon(connection: DaemonConnection): SessionState {
         if (!current()) return;
         try {
           const status = parseStatus(json);
-          setState((previous) => ({ ...previous, project: status.project }));
+          setState((previous) => ({
+            ...previous,
+            project: status.project,
+            workspace: status.workspace,
+          }));
         } catch {
           fail(
             'Incompatible daemon status or protocol version. Update the daemon and reconnect.',
@@ -126,7 +137,7 @@ export function useDaemon(connection: DaemonConnection): SessionState {
           setState((previous) => ({
             ...previous,
             phase: 'connecting',
-            message: 'Synchronizing preview…',
+            message: 'Synchronizing workspace…',
           }));
           handshakeDeadline();
         });
@@ -136,7 +147,7 @@ export function useDaemon(connection: DaemonConnection): SessionState {
           try {
             event = parseEvent(data ?? '');
             if (event.type !== type) throw new Error('SSE event name does not match envelope');
-            if (event.type === eventTypes.previewInvalidate && !synchronized)
+            if (event.type !== eventTypes.connected && !synchronized)
               throw new Error('Missing connection handshake');
           } catch {
             fail(
@@ -154,9 +165,17 @@ export function useDaemon(connection: DaemonConnection): SessionState {
             const project = event.payload.project;
             setState((previous) => ({
               project,
+              workspace: event.payload.workspace,
               generation: previous.generation + 1,
               phase: 'live',
               message: `Live · ${project.name}`,
+            }));
+          } else if (event.type === eventTypes.workspaceChanged) {
+            setState((previous) => ({
+              ...previous,
+              project: event.payload.project,
+              workspace: event.payload.workspace,
+              generation: previous.generation + 1,
             }));
           } else {
             setState((previous) => ({ ...previous, generation: previous.generation + 1 }));
@@ -164,6 +183,9 @@ export function useDaemon(connection: DaemonConnection): SessionState {
         };
         source.addEventListener(eventTypes.connected, (event) =>
           receive(eventTypes.connected, event.data),
+        );
+        source.addEventListener(eventTypes.workspaceChanged, (event) =>
+          receive(eventTypes.workspaceChanged, event.data),
         );
         source.addEventListener(eventTypes.previewInvalidate, (event) =>
           receive(eventTypes.previewInvalidate, event.data),
@@ -207,9 +229,10 @@ export function useDaemon(connection: DaemonConnection): SessionState {
     if (foreground) void connect();
     return () => {
       disposed = true;
+      disconnectHandler.current = () => {};
       stop();
       subscription.remove();
     };
   }, [connection]);
-  return state;
+  return { ...state, disconnect };
 }

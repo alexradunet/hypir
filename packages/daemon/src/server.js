@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import { isIP } from 'node:net';
-import { createEvent, encodeSse, eventTypes, PROTOCOL_VERSION } from '@hypir/protocol';
+import {
+  createEvent,
+  encodeSse,
+  eventTypes,
+  PROTOCOL_VERSION,
+  unsupportedCapabilities,
+} from '@hypir/protocol';
 import { loadProject, readScreen } from './project.js';
 
 const json = (res, status, body) => {
@@ -50,6 +56,53 @@ export async function createDaemon({
   validateOptions({ host, port, token });
   const project = await loadProject(projectRoot);
   const authorization = token === undefined ? undefined : digest(`Bearer ${token}`);
+  const appId = createHash('sha256').update(project.root).digest('hex');
+  const app = {
+    id: appId,
+    kind: 'app',
+    execution: 'active',
+    name: project.manifest.name,
+    unsupportedCapabilities: unsupportedCapabilities(project.manifest.capabilities),
+    projectRoot: project.root,
+    entrypoint: `/apps/${appId}/screens${project.manifest.entrypoint}`,
+  };
+  const workspace = {
+    id: 'hypir.workspace',
+    kind: 'workspace',
+    path: '/workspace',
+    selectedAppId: null,
+    revision: 0,
+  };
+  const snapshot = () => ({ project: project.manifest, app, workspace: { ...workspace } });
+  const escapeXml = (value) =>
+    String(value).replace(
+      /[<>&"']/g,
+      (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c],
+    );
+  const hxml = (res, contents, context) => {
+    res.writeHead(200, {
+      'content-type': 'application/vnd.hyperview+xml; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-hypir-context': context,
+    });
+    res.end(contents);
+  };
+  const workspaceContent =
+    () => `<view xmlns="https://hyperview.org/hyperview" id="workspace-content">
+    <text style="title">Development workspace</text>
+    <text>${escapeXml(app.name)}</text><text>Project: ${escapeXml(project.root)}</text>
+    <text>Identity: ${appId}</text><text>Entrypoint: ${escapeXml(project.manifest.entrypoint)}</text>
+    <text>Context: active app (static HXML)</text>
+    <text>Required capabilities: ${escapeXml((project.manifest.capabilities ?? []).join(', ') || 'basic HXML')}</text>
+    ${app.unsupportedCapabilities.length ? `<text>Unsupported capabilities: ${escapeXml(app.unsupportedCapabilities.join(', '))}. This app cannot be opened with the shared host capabilities.</text>` : ''}
+    ${!authorization ? '<text>Project selection requires a daemon token. Restart with HYPIR_TOKEN and reconnect.</text>' : ''}
+    <text style="link" href="/workspace/select/${appId}" verb="post" action="replace" target="workspace-content">Select project</text>
+    ${workspace.selectedAppId ? `<text style="link" href="${escapeXml(app.entrypoint)}" action="push">Open application</text>` : ''}
+    </view>`;
+  const workspaceScreen =
+    () => `<doc xmlns="https://hyperview.org/hyperview"><screen id="workspace">
+    <styles><style id="page" padding="24"/><style id="title" fontSize="26" fontWeight="700"/><style id="link" color="#41630b" padding="12"/></styles>
+    <body style="page" scroll="true">${workspaceContent()}</body></screen></doc>`;
   const clients = new Set();
   const sockets = new Set();
   const requests = new Set();
@@ -88,7 +141,7 @@ export async function createDaemon({
     if (req.method === 'GET' && pathname === '/api/status') {
       return json(res, 200, {
         protocolVersion: PROTOCOL_VERSION,
-        project: project.manifest,
+        ...snapshot(),
         connectedClients: clients.size,
       });
     }
@@ -101,18 +154,52 @@ export async function createDaemon({
       });
       clients.add(res);
       res.on('close', () => clients.delete(res));
-      send(res, encodeSse(createEvent(eventTypes.connected, { project: project.manifest })));
+      send(res, encodeSse(createEvent(eventTypes.connected, snapshot())));
       return;
     }
-    if (req.method === 'GET' && pathname.startsWith('/preview/')) {
-      try {
-        const contents = await readScreen(project, pathname.slice('/preview/'.length));
-        if (res.destroyed) return;
-        res.writeHead(200, {
-          'content-type': 'application/vnd.hyperview+xml; charset=utf-8',
-          'cache-control': 'no-store',
+    if (req.method === 'GET' && pathname === '/workspace/navigation') {
+      return hxml(
+        res,
+        '<doc xmlns="https://hyperview.org/hyperview"><navigator id="workspace-stack" type="stack"><nav-route id="workspace" href="/workspace" /></navigator></doc>',
+        'workspace',
+      );
+    }
+    if (req.method === 'GET' && pathname === '/workspace')
+      return hxml(res, workspaceScreen(), 'workspace');
+    if (req.method === 'POST' && pathname.startsWith('/workspace/select/')) {
+      if (!authorization)
+        return json(res, 401, { error: 'Configure a daemon token to select a project' });
+      if (req.headers['x-hypir-protocol-version'] !== String(PROTOCOL_VERSION))
+        return json(res, 409, { error: 'Incompatible mutation protocol version' });
+      if (pathname !== `/workspace/select/${appId}` || req.url.includes('?'))
+        return json(res, 400, { error: 'Unknown registered project' });
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 0) return json(res, 400, { error: 'This action does not accept a payload' });
+      }
+      if (app.unsupportedCapabilities.length)
+        return json(res, 422, {
+          error: 'Unsupported capabilities',
+          capabilities: app.unsupportedCapabilities,
         });
-        return res.end(contents);
+      await readScreen(project, project.manifest.entrypoint.slice(1));
+      workspace.selectedAppId = appId;
+      workspace.revision += 1;
+      broadcast(createEvent(eventTypes.workspaceChanged, snapshot()));
+      return hxml(res, workspaceContent(), 'workspace');
+    }
+    const appPrefix = `/apps/${appId}/screens/`;
+    if (req.method === 'GET' && pathname.startsWith(appPrefix)) {
+      if (app.unsupportedCapabilities.length)
+        return json(res, 422, {
+          error: 'Unsupported capabilities',
+          capabilities: app.unsupportedCapabilities,
+        });
+      try {
+        const contents = await readScreen(project, pathname.slice(appPrefix.length));
+        if (res.destroyed) return;
+        return hxml(res, contents, 'app:active');
       } catch (error) {
         if (res.destroyed) return;
         return json(res, error.code === 'ENOENT' ? 404 : 400, {

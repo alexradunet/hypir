@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build:standalone": "cd android && ./gradlew assembleStandalone",
     "android": "react-native run-android",
     "start": "react-native start --host 127.0.0.1",
     "build": "cd android && ./gradlew assembleDebug",

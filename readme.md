@@ -1,8 +1,8 @@
 # Hypir
 
-An Android and Linux development environment for Hyperview apps. The current implementation includes a React Native Android host, a standalone Electron Linux client, a Node.js project daemon, live HXML preview refresh, connection controls, and request inspection. Android uses native widgets; Linux uses Hyperview's web implementations through React Native Web. Pi agent/session integration is planned, not implemented. The presentation includes a clearly labeled product concept rather than an interactive demo.
+An Android and Linux development environment for Hyperview apps. The current implementation includes a React Native Android host, a standalone Electron Linux client, a Node.js project daemon, a backend-provided HXML development workspace, live HXML refresh, connection controls, independent backend recovery, and request inspection. Android uses native widgets; Linux uses Hyperview's web implementations through React Native Web. Pi agent/session integration is planned, not implemented. The presentation includes a clearly labeled product concept rather than an interactive demo.
 
-The next feature milestone—reversible Pi editing, HXML diagnostics, and last-good native previews—is specified in [implementation plan #4](https://github.com/alexradunet/hypir/issues/4). That plan is not a claim that agent features have already shipped.
+The shared backend direction is specified in [spec #5](https://github.com/alexradunet/hypir/issues/5). The workspace and recovery slices add project inspection, navigation and a retained backend recovery base; Pi, persistent app logic, candidate editing and activation remain later work.
 
 ## Architecture
 
@@ -31,15 +31,16 @@ Desktop window <-- isolated main-process transport --> http://127.0.0.1:4747
 
 The Linux client shares its connection state machine, HXML renderer integration, and request inspector with Android. It does not require Termux, an Android emulator, Metro, or an Android SDK. Desktop controls are browser-backed, not Android widgets; use the Android app when verifying exact mobile appearance and behavior.
 
-| Directory                  | Purpose                                                                 |
-| -------------------------- | ----------------------------------------------------------------------- |
-| `apps/android`             | React Native app, Android Gradle host, native preview and connection UI |
-| `apps/desktop`             | Standalone Linux window, isolated daemon transport and packaging        |
-| `packages/client`          | Shared Android/desktop connection, live preview and inspection UI       |
-| `packages/daemon`          | Linux project server, file watcher, authenticated HTTP/SSE endpoints    |
-| `packages/protocol`        | Shared version-1 runtime validators and TypeScript declarations         |
-| `examples/hello-hyperview` | Runnable HXML project                                                   |
-| `docs`                     | The only presentation site implementation; deployed to GitHub Pages     |
+| Directory                  | Purpose                                                                  |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `apps/android`             | React Native app, Android Gradle host, native preview and connection UI  |
+| `apps/desktop`             | Standalone Linux window, isolated daemon transport and packaging         |
+| `packages/client`          | Shared Android/desktop connection, live preview and inspection UI        |
+| `packages/daemon`          | Linux project server, file watcher, authenticated HTTP/SSE endpoints     |
+| `packages/recovery`        | Independent recovery installer, controller and retained-backend launcher |
+| `packages/protocol`        | Shared version-2 runtime validators and TypeScript declarations          |
+| `examples/hello-hyperview` | Runnable HXML project                                                    |
+| `docs`                     | The only presentation site implementation; deployed to GitHub Pages      |
 
 ## Install and run in Termux
 
@@ -73,11 +74,11 @@ The default project is `examples/hello-hyperview`, listening at `http://127.0.0.
 read -rsp 'Daemon token: ' HYPIR_TOKEN; printf '\n'
 export HYPIR_TOKEN
 curl --fail -H "Authorization: Bearer $HYPIR_TOKEN" http://127.0.0.1:4747/api/status
-curl --fail -H "Authorization: Bearer $HYPIR_TOKEN" http://127.0.0.1:4747/preview/index.xml
+curl --fail -H "Authorization: Bearer $HYPIR_TOKEN" http://127.0.0.1:4747/workspace
 curl --no-buffer -H "Authorization: Bearer $HYPIR_TOKEN" http://127.0.0.1:4747/api/events
 ```
 
-Status reports `{protocolVersion: 1, project: {...}, connectedClients: ...}`. SSE starts with `daemon.connected` containing the current manifest; edits emit `preview.invalidate`. The app refreshes from the current manifest on every connection and invalidates its preview on reconnect and file changes, including after a daemon restart. Edit `examples/hello-hyperview/screens/index.xml` to exercise the live native preview without rebuilding the APK.
+Status reports `{protocolVersion: 2, project: {...}, app: {...}, workspace: {...}, connectedClients: ...}`. SSE starts with `daemon.connected` containing the authoritative project/app/workspace snapshot; selection emits `workspace.changed` and edits emit `preview.invalidate`. The client reloads the workspace on reconnect and file changes, including after a daemon restart. Select the registered project and follow its application link; `app.entrypoint` in status provides the current `/apps/<registered-id>/screens/...` URL. Edit `examples/hello-hyperview/screens/index.xml` to exercise the live native preview without rebuilding the APK.
 
 For another project or port:
 
@@ -89,7 +90,7 @@ node packages/daemon/src/cli.js --project /absolute/path/to/project --port 4747
 
 1. Start the daemon in Termux and verify the status endpoint above.
 2. If this device previously used a desktop daemon, run `adb reverse --remove tcp:4747` on the connected development host before testing Termux. Otherwise the old rule can route the app to the host instead.
-3. In Hypir, enter `http://127.0.0.1:4747` and the daemon token, then connect. No port forwarding is needed on the same device. Verify the connection and the **Hello Hyperview** preview.
+3. In Hypir, enter `http://127.0.0.1:4747` and the daemon token, then connect. No port forwarding is needed on the same device. Inspect the project identity and entrypoint in the workspace, select **Hello Hyperview**, open its application, and use the host Back control to return.
 4. Edit the example HXML in Termux and confirm the native preview refreshes. If the connection fails, check the daemon session, URL, token, and any stale `adb reverse` rule. If updates stop, check that Android has not suspended or killed the Termux process.
 
 ### Session lifetime and battery
@@ -100,7 +101,7 @@ If interruptions persist, review Termux's per-app battery/background settings ma
 
 ### Authentication and network exposure
 
-Loopback binding permits an omitted token. **Non-loopback binding requires `HYPIR_TOKEN`; the daemon refuses to start without it.** A token is also recommended on loopback because other local apps/processes may reach Android's loopback ports. The Termux quick start above reads the token without putting its value in command history.
+Loopback binding permits an omitted token for inspection only. Workspace mutation requires a configured token even on loopback. **Non-loopback binding requires `HYPIR_TOKEN`; the daemon refuses to start without it.** A token is also recommended on loopback because other local apps/processes may reach Android's loopback ports. The Termux quick start above reads the token without putting its value in command history.
 
 Keep the default loopback listener for same-device use. Only if a separate, trusted network path requires non-loopback access, set a token before starting it:
 
@@ -110,7 +111,7 @@ export HYPIR_TOKEN
 npm run dev -- --host 0.0.0.0
 ```
 
-Use a long, randomly generated secret. Set the same optional token in the Android connection UI; the app keeps it in memory, not persistent settings. Requests to the daemon's API, SSE stream, and preview use `Authorization: Bearer <token>`. Do not place secrets in URLs, project files, screenshots, or source control. To check an authenticated endpoint from a shell with the variable set:
+Use a long, randomly generated secret. Set the same optional token in the Android connection UI; the app keeps it in memory, not persistent settings. Requests to the daemon's API, SSE stream, workspace, and application requests use `Authorization: Bearer <token>`. Do not place secrets in URLs, project files, screenshots, or source control. To check an authenticated endpoint from a shell with the variable set:
 
 ```bash
 curl --fail -H "Authorization: Bearer $HYPIR_TOKEN" http://127.0.0.1:4747/api/status
@@ -141,7 +142,7 @@ In a second terminal at the repository root:
 npm run desktop
 ```
 
-Enter `http://127.0.0.1:4747` and the same token in the desktop window, then connect. Edit `examples/hello-hyperview/screens/index.xml` with your Linux editor; the preview refreshes without rebuilding the desktop application. The daemon remains a separate process: leave its terminal running and stop it with Ctrl+C when finished.
+Enter `http://127.0.0.1:4747` and the same token in the desktop window, then connect. Inspect the project identity and entrypoint in the workspace, select the registered project, open its application, and use the host Back control to return. Edit `examples/hello-hyperview/screens/index.xml` with your Linux editor; the preview refreshes without rebuilding the desktop application. The daemon remains a separate process: leave its terminal running and stop it with Ctrl+C when finished.
 
 To build a redistributable Linux application directory:
 
@@ -157,7 +158,7 @@ Run Electron as your normal desktop user with Chromium sandbox support enabled. 
 
 - HXML uses the same Hyperview library as Android, selecting upstream web implementations and React Native Web controls. This is a working preview, not a screenshot or an embedded Android emulator.
 - Browser layout, fonts, date pickers, keyboard handling, scrolling, and platform-specific behavior differ from Android. Android-only integrations are not made desktop-compatible by packaging.
-- The desktop window is restricted to its own bundled UI and the selected daemon's `/api/` and `/preview/` resources. Arbitrary external pages, embedded websites, and direct remote assets are blocked; external navigation is not a general-purpose browser feature.
+- The desktop window is restricted to its own bundled UI and the selected daemon's `/api/`, `/workspace`, `/workspace/`, and `/apps/` resources. Arbitrary external pages, embedded websites, and direct remote assets are blocked; external navigation is not a general-purpose browser feature.
 - Credentials are kept in the Electron main process for the current connection, not saved in preferences. The renderer receives a synthetic endpoint rather than the token. Reconnecting invalidates the old endpoint and cancels its requests.
 - The daemon's browser-origin rejection remains enabled. The isolated main-process transport sends authenticated requests without exposing a general browser API, disables redirects, and does not forward browser cookies. The Electron renderer retains sandboxing, context isolation, and web security.
 - Prefer local loopback. If the daemon is remote, use HTTPS: bearer tokens do not encrypt plain HTTP.
@@ -240,7 +241,7 @@ Every project has a `hyperview.json`:
 }
 ```
 
-`entrypoint` is an absolute **URL path within the screens directory**, not a host filesystem path. `/flows/start.xml` maps to `screens/flows/start.xml` and is served at `/preview/flows/start.xml`. It must identify an existing regular `.xml` file when the daemon starts. `screens` is a relative directory inside the project root. Traversal, symlinked screens directories/path components, and symlinked preview files are rejected; keep real files in the project instead. The Linux descriptor-based checks protect preview access from symlink swaps, but the project owner is trusted to edit the project: this is not a sandbox against privileged processes or hardlinks planted by a local same-user attacker.
+`entrypoint` is an absolute **URL path within the screens directory**, not a host filesystem path. `/flows/start.xml` maps to `screens/flows/start.xml` and is served at `/apps/<registered-id>/screens/flows/start.xml`. The former `/preview/` route is retired. It must identify an existing regular `.xml` file when the daemon starts. `screens` is a relative directory inside the project root. Traversal, symlinked screens directories/path components, and symlinked preview files are rejected; keep real files in the project instead. The Linux descriptor-based checks protect preview access from symlink swaps, but the project owner is trusted to edit the project: this is not a sandbox against privileged processes or hardlinks planted by a local same-user attacker.
 
 ## Presentation site and CI
 
@@ -256,7 +257,7 @@ Open `http://localhost:4173`. The standard Python server has its own missing-pag
 
 `.github/workflows/ci.yml` tests the lean daemon runtime on Node 20 and installs the full locked workspace on Node 24. Both run regression tests and JavaScript syntax checks. Node 24 also checks shared/platform TypeScript and formatting, produces the Android JavaScript bundle and Linux application package, and repeats tests after a daemon-only install. These checks do not build an APK or establish on-device Termux compatibility; native builds and end-to-end device verification remain separate.
 
-## Verified development scenarios
+## Historical preview validation (before the workspace cutover)
 
 The Android API 35 x86_64 emulator was exercised against a Linux host daemon through `adb reverse`. The debug APK was built for both ARM64 and x86_64 with JDK 17. Verified scenarios include the shipped example, a nested manifest entrypoint, live HXML edits, populated native date-field interaction, starting the daemon after the app, daemon restart with a changed manifest, background/foreground resynchronization, token rejection/recovery, incompatible protocol rejection, and preventing an authenticated redirect from reaching another origin.
 
@@ -265,3 +266,49 @@ The daemon/protocol regression suite also passes from an actual Termux terminal 
 The standalone Linux client was exercised on x86_64 Linux with Electron 44.3.0, both from source and from the packaged executable launched outside the repository working directory. Verified scenarios include authentication rejection/recovery, live HXML edits, text entry, picker selection, calendar date selection, stack navigation, daemon restart with a changed manifest entrypoint, and continued live updates from the packaged app. Renderer access to Node APIs, direct daemon networking, and local files is blocked. The shared preview now supplies the navigation container required by HXML stack navigators.
 
 The 24 protocol/daemon/desktop transport regression tests pass on Node 20 after a lean daemon install and on Node 24 after a full locked install. Full workspace TypeScript, syntax, formatting, Android production bundle, and Linux packaging checks pass. The extracted shared client was also exercised in the Android API 35 emulator: authentication recovery, live preview refresh, and stack navigation to another HXML screen work. Linux ARM64 packages, other distributions, and Android-specific device integrations in desktop HXML remain unverified; desktop previews are not an Android rendering-fidelity guarantee.
+
+## Bundled Android client with native Termux
+
+For ordinary use without a desktop-hosted Metro process, build the bundled local-testing variant on the provisioning machine:
+
+```bash
+npm run build:android:standalone
+adb install -r apps/android/android/app/build/outputs/apk/standalone/app-standalone.apk
+```
+
+This variant embeds the JavaScript/assets and disables developer support. It uses the checked-in public debug signing key for local testing only; distributed release APKs still require private signing. Building an APK and demonstrating its operation are separate checks. The ordinary debug variant above remains a Metro development workflow.
+
+Start the backend in **native Termux**, with the repository under Termux's private `$HOME` (not shared `/sdcard` storage, proot, or a desktop-mounted directory), using the lean installation above and a nonempty `HYPIR_TOKEN`. Remove any `adb reverse` rules for ports 4747 and 8081 when switching from desktop testing, stop Metro, and launch the bundled Hypir app. Connect to `http://127.0.0.1:4747` with the same token. Inspect the actual project root, identity and entrypoint; select the project, open the application, then use Back to return to the workspace. No desktop service participates in this workflow after provisioning.
+
+Stop the Termux daemon to check the disconnected state, then restart it and confirm the workspace reloads. Android may terminate Termux or the client in the background; the user may need to reopen Termux and restart the backend. This setup does not promise background execution or immunity to process killing.
+
+## Workspace HTTP/HXML/SSE contract (version 2)
+
+- `GET /api/status` returns `protocolVersion: 2`, the validated project manifest, registered `app`, `workspace` snapshot, and connected-client count. `GET /api/events` starts every stream with `daemon.connected` carrying the same project/app/workspace snapshot. Selection emits `workspace.changed`; file changes still emit `preview.invalidate`. Events have `version: 2`. Version-1 clients must update.
+- `GET /workspace/navigation` supplies the HXML stack navigator; `GET /workspace` supplies project inspection and actions. Both clients render these documents through the existing Hyperview library. The host owns only connection controls, rendering/navigation chrome, disconnected status, and request inspection.
+- The backend derives the registered app ID from the canonical project root using SHA-256. It remains stable across backend restarts at that location; moving/copying the repository creates a separate installation identity. `app.projectRoot` is the real canonical root, `app.entrypoint` is its public HXML URL, and `app.kind: app` / `app.execution: active` distinguish it from `workspace.kind: workspace` / `workspace.id: hypir.workspace`. This static slice does not execute project backend code or create persistent app data.
+- The workspace supplies a targeted HXML fragment action (`verb="post"`, `action="replace"`) at `POST /workspace/select/<registered-id>`. It verifies the entrypoint still exists, selects that registered project in backend memory, and returns the updated workspace fragment with the Open application link. It requires bearer authentication and `X-Hypir-Protocol-Version: 2`; unknown IDs, query parameters and nonempty payloads are rejected. Clients cannot submit a filesystem path. Incompatible mutation versions return 409. No configured token means mutations return 401, even on loopback.
+- `GET /apps/<registered-id>/screens/<path>.xml` serves the actual project screen using the existing descriptor-relative containment protections. Relative screen links stay within that app's screens URL tree; old absolute `/preview/` links need migration. HXML responses report `X-Hypir-Context: workspace` or `app:active`. The old static preview route is not an alternate execution path.
+- A new stream always supplies authoritative state, with no replay of actions. Selection is intentionally in-memory in this slice: reconnecting to the same backend retains it, while restarting resets it. The hosts retire the renderer and cancel pending requests on disconnection, backgrounding, connection replacement, or a fresh render generation; old responses cannot update the replacement renderer. Recoverable host connection input remains, but application form input is not retained across these reloads. An interrupted action has an unknown outcome until fresh state arrives and is never automatically retried.
+- Bearer scoping, native redirect rejection, desktop isolated credential ownership, request cancellation, browser-origin rejection, and app filesystem containment remain required. HTTP is not encrypted; use loopback or a trusted HTTPS transport as described above.
+
+A manifest may optionally declare `capabilities`, for example `"capabilities": ["text", "view", "date-field", "push", "back"]`. Names reuse the installed Hyperview vocabulary. The conservative shared baseline is exported as `SHARED_HXML_CAPABILITIES` in the protocol package: view, text, image, list, section-list, text-field, date-field, picker-field, option, select-single, select-multiple, switch, spinner, form, behavior, navigator, push, back, replace, replace-inner, reload, append and prepend. Unknown or platform-only declarations (for example camera or web-view) are listed in `app.unsupportedCapabilities` and the workspace; selection and app loading return 422. Undeclared capabilities are not inferred from arbitrary XML: declare requirements explicitly and verify the actual client. This is descriptive compatibility information, not a sandbox, complete schema validator, or a promise of identical fonts, layouts, keyboard behavior, remote-asset access or native integrations.
+
+## Workspace validation status
+
+The combined protocol, daemon, recovery, and desktop-transport suite passes **32 regression tests on Node 20.20.2**. Both platform TypeScript checks, the desktop renderer build, and the standalone Android APK build pass. Gradle tracks the hoisted shared-client inputs: changing them rebundles the APK, while an unchanged build remains up to date.
+
+The version-2 workspace was exercised in the actual Linux client with Electron 44.3.0 and in the standalone Android client on the API 35 x86_64 emulator, using official GitHub Termux 0.118.3 and native Android Node 24.18.0. The APK was built with JDK 17.0.20.1. Android-to-Termux operation used **no Metro server or `adb reverse` rules**. Both clients completed project inspection, selection, application rendering, Back navigation, and backend stop/reconnect. Android also exercised rejected credentials and successful reconnection, unsupported-capability blocking, and foreground resynchronization without replaying selection.
+
+The standalone variant uses a public testing key, not a production signing identity. Physical ARM64 phones, Android 7, vendor-specific process policies, Linux ARM64, and other desktop distributions remain unverified. Historical date-field and packaging results above are not a claim that every scenario was repeated for this cutover.
+
+## Independent backend recovery
+
+Use the separately installed [recovery base](docs/recovery.md) to inspect, start,
+stop or recover a retained backend when the normal workspace cannot load. Both
+clients expose **Backend recovery** outside the normal renderer, with a separate
+URL and mandatory recovery token (`HYPIR_RECOVERY_TOKEN`), distinct from the
+managed backend’s mandatory `HYPIR_TOKEN`. The recovery guide covers installation, retained runtime
+material, operational boundaries and the required user restart if Android kills
+Termux itself. The guide records the verified recovery scenarios and remaining
+platform limitations.

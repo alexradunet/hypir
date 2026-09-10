@@ -7,7 +7,19 @@ react {
     reactNativeDir = file("../../../../node_modules/react-native")
     codegenDir = file("../../../../node_modules/@react-native/codegen")
     cliFile = file("../../../../node_modules/react-native/cli.js")
+    hermesCommand = file("../../../../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc").absolutePath
     autolinkLibrariesWithApp()
+}
+
+// Metro watches hoisted packages, but Gradle's default bundle inputs only cover
+// apps/android. Track shared renderer sources without changing Metro's app root.
+tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach {
+    inputs.files(fileTree("../../../../packages") {
+        include "client/src/**", "client/package.json"
+        include "protocol/src/**", "protocol/package.json"
+        include "recovery/src/contract.*"
+    }).withPropertyName("sharedClientSources")
+        .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
 }
 
 /**
@@ -57,6 +69,14 @@ android {
             // Release artifacts remain unsigned until a private signing configuration is supplied.
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+        // Bundled local testing host: release runtime (no Metro), public test key.
+        // Use privately signed release builds for distribution.
+        standalone {
+            initWith release
+            signingConfig signingConfigs.debug
+            debuggable false
+            matchingFallbacks = ['release']
         }
     }
 }

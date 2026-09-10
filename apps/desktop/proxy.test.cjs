@@ -108,7 +108,7 @@ test(
     });
     assert.deepEqual(f.connection, { endpoint: 'http://daemon-1.hypir.local', token: '' });
     const response = await f.proxy.handle(
-      request(f.connection, '/preview/form.xml?step=2', {
+      request(f.connection, '/workspace/select/test-app?step=2', {
         method: 'POST',
         body: 'name=Alice&message=Hello%20world',
         headers: {
@@ -127,7 +127,7 @@ test(
     assert.equal(observed.headers['content-type'], 'application/x-www-form-urlencoded');
     assert.equal(observed.body, 'name=Alice&message=Hello%20world');
     assert.equal(observed.method, 'POST');
-    assert.equal(observed.url, '/preview/form.xml?step=2');
+    assert.equal(observed.url, '/workspace/select/test-app?step=2');
     assert.equal(response.status, 206);
     assert.equal(response.headers.get('content-range'), 'bytes 0-3/4');
     assert.equal(response.headers.get('set-cookie'), null);

@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import Hyperview from 'hyperview';
 import { format } from 'date-fns';
 import { DAEMON_URL } from './config';
@@ -21,11 +21,13 @@ import {
   type DaemonConnection,
 } from './transport';
 import { useDaemon } from './useDaemon';
+import { RecoveryControls } from './RecoveryControls';
 
 type RequestRecord = { method: string; url: string; status?: number; duration: number };
 
 export type AppProps = {
   configureConnection?: (connection: DaemonConnection) => Promise<DaemonConnection>;
+  configureRecoveryConnection?: (connection: DaemonConnection) => Promise<DaemonConnection>;
   initialEndpoint?: string;
   autoConnect?: boolean;
   clearTokenOnConnect?: boolean;
@@ -36,7 +38,7 @@ export type AppProps = {
 
 const identityConnection = async (connection: DaemonConnection) => connection;
 const androidGuidance =
-  'Start the daemon in Termux, then connect to http://127.0.0.1:4747. The preview appears after the protocol handshake.';
+  'Start the daemon in Termux, then connect to http://127.0.0.1:4747. The workspace appears after the protocol handshake.';
 
 function formatDate(
   date: Date | null | undefined,
@@ -46,7 +48,7 @@ function formatDate(
   return format(date, pattern ?? 'yyyy-MM-dd');
 }
 
-function PreviewSession({
+function WorkspaceSession({
   connection,
   waitingGuidance,
 }: {
@@ -54,6 +56,34 @@ function PreviewSession({
   waitingGuidance: string;
 }) {
   const state = useDaemon(connection);
+  return state.phase === 'live' && state.workspace ? (
+    <WorkspaceRenderer
+      key={state.generation}
+      connection={connection}
+      state={state}
+      waitingGuidance={waitingGuidance}
+    />
+  ) : (
+    <View style={styles.preview}>
+      <Text accessibilityLiveRegion="polite" style={styles.waiting}>
+        {state.message}
+      </Text>
+      <Text style={styles.waiting}>{waitingGuidance}</Text>
+    </View>
+  );
+}
+
+function WorkspaceRenderer({
+  connection,
+  state,
+  waitingGuidance,
+}: {
+  connection: DaemonConnection;
+  state: ReturnType<typeof useDaemon>;
+  waitingGuidance: string;
+}) {
+  const navigation = useNavigationContainerRef();
+  const [canGoBack, setCanGoBack] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [previewError, setPreviewError] = useState<string>();
   const alive = useRef(true);
@@ -90,7 +120,14 @@ function PreviewSession({
         });
         if (!alive.current) throw new Error('Preview session closed');
         status = response.status;
+        if (!response.ok) {
+          setPreviewError(`Request failed (HTTP ${response.status}). No action was confirmed.`);
+          throw new Error(`HTTP ${response.status}`);
+        }
         return response;
+      } catch (error) {
+        if (alive.current && status === undefined && !controller.signal.aborted) state.disconnect();
+        throw error;
       } finally {
         pending.current.delete(controller);
         upstream?.removeEventListener('abort', abort);
@@ -102,11 +139,11 @@ function PreviewSession({
         }
       }
     },
-    [connection],
+    [connection, state.disconnect],
   );
 
-  const entrypoint = state.project
-    ? `${connection.endpoint}/preview${state.project.entrypoint}`
+  const entrypoint = state.workspace
+    ? `${connection.endpoint}${state.workspace.path}/navigation`
     : undefined;
   return (
     <>
@@ -117,11 +154,15 @@ function PreviewSession({
         >
           {state.message}
         </Text>
+        {canGoBack ? <Button title="Back" onPress={() => navigation.goBack()} /> : null}
         {previewError ? <Text style={styles.offline}>{previewError}</Text> : null}
       </View>
       <View style={styles.preview}>
         {entrypoint && state.generation > 0 ? (
-          <NavigationContainer key={state.generation}>
+          <NavigationContainer
+            ref={navigation}
+            onStateChange={() => setCanGoBack(navigation.canGoBack())}
+          >
             <Hyperview
               entrypointUrl={entrypoint}
               fetch={instrumentedFetch}
@@ -129,7 +170,7 @@ function PreviewSession({
               onError={() => {
                 if (alive.current)
                   setPreviewError(
-                    'Preview failed to load. Check HXML and the network inspector, then reconnect.',
+                    'Application failed to load. Check HXML and the network inspector, then reconnect.',
                   );
               }}
             />
@@ -152,10 +193,11 @@ function PreviewSession({
 
 export default function App({
   configureConnection = identityConnection,
+  configureRecoveryConnection = identityConnection,
   initialEndpoint = DAEMON_URL,
   autoConnect = true,
   clearTokenOnConnect = false,
-  runtimeLabel = 'NATIVE PREVIEW',
+  runtimeLabel = 'ANDROID HOST',
   waitingGuidance = androidGuidance,
   desktopLayout = false,
 }: AppProps = {}) {
@@ -254,13 +296,17 @@ export default function App({
               />
             </View>
           </View>
+          <RecoveryControls
+            configureConnection={configureRecoveryConnection}
+            clearTokenOnConnect={clearTokenOnConnect}
+          />
           {error ? (
             <Text accessibilityLiveRegion="polite" style={[styles.offline, styles.status]}>
               {error}
             </Text>
           ) : null}
           {session ? (
-            <PreviewSession
+            <WorkspaceSession
               key={session.id}
               connection={session.connection}
               waitingGuidance={waitingGuidance}
