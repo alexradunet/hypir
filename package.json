@@ -1,0 +1,13 @@
+{
+  "name": "hypir",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*", "examples/*"],
+  "scripts": {
+    "dev": "node packages/daemon/src/cli.js --project examples/hello-hyperview",
+    "test": "node --test packages/**/*.test.js",
+    "check": "node --check packages/daemon/src/*.js && node --check packages/protocol/src/*.js",
+    "docs": "python3 -m http.server 4173 --directory docs"
+  },
+  "engines": { "node": ">=20" }
+}
