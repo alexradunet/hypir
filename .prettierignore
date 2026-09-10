@@ -1,0 +1,10 @@
+node_modules/
+package-lock.json
+apps/android/android/
+apps/android/.metro-health-check*
+.agents/
+.claude/
+.codex/
+AGENTS.md
+skills-lock.json
+docs/agents/

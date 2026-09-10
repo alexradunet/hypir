@@ -2,3 +2,18 @@ node_modules/
 .hypir/
 *.log
 .DS_Store
+
+# Android and local build state
+.gradle/
+build/
+.cxx/
+local.properties
+*.jks
+*.keystore
+!debug.keystore
+.metro-health-check*
+
+# Local credentials
+.env
+.env.*
+!.env.example

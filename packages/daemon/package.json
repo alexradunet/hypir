@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "hypir-daemon": "src/cli.js" },
-  "dependencies": { "@hypir/protocol": "workspace:*" }
+  "bin": {
+    "hypir-daemon": "src/cli.js"
+  },
+  "dependencies": {
+    "@hypir/protocol": "0.1.0"
+  }
 }

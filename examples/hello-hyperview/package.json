@@ -1,1 +1,5 @@
-{ "name": "hello-hyperview", "private": true, "type": "module" }
+{
+  "name": "hello-hyperview",
+  "private": true,
+  "type": "module"
+}

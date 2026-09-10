@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <doc xmlns="https://hyperview.org/hyperview">
-  <styles>
-    <style id="screen" flex="1" padding="24" backgroundColor="#0b0f14" />
-    <style id="eyebrow" color="#b9f34a" fontSize="12" />
-    <style id="title" color="#f4f6f2" fontSize="32" fontWeight="700" marginTop="12" />
-    <style id="copy" color="#929ca5" fontSize="16" marginTop="12" />
-  </styles>
   <screen id="hello">
+    <styles>
+      <style id="screen" flex="1" padding="24" backgroundColor="#0b0f14"/>
+      <style id="eyebrow" color="#b9f34a" fontSize="12"/>
+      <style id="title" color="#f4f6f2" fontSize="32" fontWeight="700" marginTop="12"/>
+      <style id="copy" color="#929ca5" fontSize="16" marginTop="12"/>
+    </styles>
     <body style="screen">
       <text style="eyebrow">NATIVE PREVIEW</text>
       <text style="title">Hello from Hypir</text>

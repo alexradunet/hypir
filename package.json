@@ -2,12 +2,31 @@
   "name": "hypir",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*", "examples/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "examples/*"
+  ],
   "scripts": {
     "dev": "node packages/daemon/src/cli.js --project examples/hello-hyperview",
-    "test": "node --test packages/**/*.test.js",
-    "check": "node --check packages/daemon/src/*.js && node --check packages/protocol/src/*.js",
-    "docs": "python3 -m http.server 4173 --directory docs"
+    "test": "node --test packages/*/src/*.test.js",
+    "check": "node scripts/check.js",
+    "typecheck": "npm run typecheck --workspace @hypir/android",
+    "android": "npm run android --workspace @hypir/android",
+    "build": "npm run build --workspace @hypir/android",
+    "bundle": "npm run bundle --workspace @hypir/android",
+    "start": "npm run start --workspace @hypir/android",
+    "docs": "python3 -m http.server 4173 --directory docs",
+    "format": "prettier --write apps packages scripts docs/index.html docs/404.html docs/styles.css index.html readme.md package.json .prettierrc.json .github/workflows",
+    "format:check": "prettier --check apps packages scripts docs/index.html docs/404.html docs/styles.css index.html readme.md package.json .prettierrc.json .github/workflows"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "overrides": {
+    "lodash": "4.18.1"
+  }
 }
