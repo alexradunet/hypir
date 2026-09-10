@@ -1,5 +1,23 @@
 # Hypir
 
+**An Android-first agentic development environment for native Hyperview apps.**
+
+This repository contains the product landing page for Hypir, a focused ADE where Pi edits HXML and the result is rendered natively on the same Android device.
+
+## Run locally
+
+The site has no build dependencies. Serve the repository root with any static file server:
+
+```bash
+python3 -m http.server 4173
+```
+
+Then open `http://localhost:4173`.
+
+## Product vision
+
+Yes. I think **Pi + Hyperview is unusually well suited to an Android-first ADE**.
+
 An Android-first agentic development environment for Hyperview applications.
 
 This repository now contains the first runnable slice of the proposed architecture rather than a presentation site:
