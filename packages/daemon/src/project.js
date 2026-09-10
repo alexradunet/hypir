@@ -7,7 +7,7 @@ const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_
 const fileFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const descriptorPath = (directory, name) => `/proc/self/fd/${directory.fd}/${name}`;
 
-// Linux descriptor-relative traversal pins each directory before opening its child.
+// Linux/Android descriptor-relative traversal pins each directory before opening its child.
 // No screens component may be a symlink, including the final file. Unlike
 // realpath-then-read this cannot be redirected by replacing a checked pathname.
 // Project owners are trusted to author content; this is not a sandbox against
@@ -57,11 +57,21 @@ export async function readScreen(project, requestPath) {
 }
 
 export async function loadProject(projectRoot) {
-  if (process.platform !== 'linux') throw new Error('The daemon requires Linux with /proc/self/fd');
+  if (process.platform !== 'linux' && process.platform !== 'android')
+    throw new Error('The daemon requires native Termux on Android or Linux with /proc/self/fd');
   const root = await realpath(path.resolve(projectRoot));
   const rootDirectory = await open(root, directoryFlags);
   let directory;
   try {
+    try {
+      const probe = await open(descriptorPath(rootDirectory, '.'), directoryFlags);
+      await probe.close();
+    } catch (cause) {
+      throw new Error(
+        'Secure project access requires accessible /proc/self/fd. Run in native Termux on Android or Linux with procfs available.',
+        { cause },
+      );
+    }
     const manifestFile = await open(descriptorPath(rootDirectory, 'hyperview.json'), fileFlags);
     let manifest;
     try {

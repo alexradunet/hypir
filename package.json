@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "node packages/daemon/src/cli.js --project examples/hello-hyperview",
+    "install:daemon": "npm ci --workspace @hypir/daemon --include-workspace-root=false --omit=dev",
     "test": "node --test packages/*/src/*.test.js",
     "check": "node scripts/check.js",
     "typecheck": "npm run typecheck --workspace @hypir/android",

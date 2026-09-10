@@ -136,22 +136,27 @@
       </section>
       <section class="architecture" id="architecture" aria-labelledby="architecture-title">
         <p class="eyebrow">TWO RUNTIMES, ONE DEVICE</p>
-        <h2 id="architecture-title">Native Android. Debian-powered tools.</h2>
+        <h2 id="architecture-title">Native Android. Termux-powered tools.</h2>
         <p>
-          The Android app hosts React Native and the real Hyperview renderer. A Node.js daemon
-          inside Android Linux Terminal's Debian virtual machine serves project screens and streams
-          file-change events.
+          The Android app hosts React Native and the real Hyperview renderer. A Node.js daemon runs
+          natively in Termux, serves project screens, and streams file-change events. No Debian,
+          proot, or virtual machine is required.
         </p>
         <p>
-          These are separate network environments. Enable and verify Terminal's port forwarding
-          before connecting the app to the daemon; device localhost is not automatically VM
-          localhost. Desktop emulator development uses a host daemon and
-          <code>adb reverse</code> instead, not an emulated Terminal VM.
+          The app and Termux share Android loopback at <code>http://127.0.0.1:4747</code>:
+          same-device connections need no port forwarding. Desktop development with a host daemon
+          uses <code>adb reverse</code> instead; remove its port 4747 rule before testing Termux on
+          the same device.
         </p>
         <p>
-          Project files and future agent execution stay in Debian, outside the app's JavaScript
-          runtime. The current implementation provides the native preview, connection controls, and
-          request inspection; agent sessions remain planned.
+          Project files stay in Termux's private home directory, outside the app's JavaScript
+          runtime. Use a daemon token even on loopback. Full Termux package support starts at
+          Android 7; Android background restrictions can still interrupt a session.
+        </p>
+        <p>
+          The current implementation provides native preview, connection controls, and request
+          inspection. Reversible agent editing and validated preview publication are the next
+          feature milestone; agent sessions remain planned.
         </p>
       </section>
       <section class="access" id="access">

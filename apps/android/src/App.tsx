@@ -106,8 +106,8 @@ function PreviewSession({ connection }: { connection: DaemonConnection }) {
           />
         ) : (
           <Text style={styles.waiting}>
-            Start the daemon in Debian, forward its port, then connect. The preview appears after
-            the protocol handshake.
+            Start the daemon in Termux, then connect to http://127.0.0.1:4747. The preview appears
+            after the protocol handshake.
           </Text>
         )}
       </View>

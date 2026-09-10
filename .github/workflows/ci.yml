@@ -38,3 +38,6 @@ jobs:
       - name: Verify native JavaScript bundle
         if: matrix.node == 24
         run: npm run bundle --workspace @hypir/android -- --max-workers 2
+      - name: Verify lean daemon runtime
+        if: matrix.node == 24
+        run: npm run install:daemon && npm test

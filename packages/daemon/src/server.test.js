@@ -120,6 +120,64 @@ test('serves a validated manifest and nested regular XML without browser CORS', 
   assert.equal((await request(port, '/preview/missing.xml')).status, 404);
 });
 
+test('loads real projects on Android without weakening descriptor-relative containment', async (t) => {
+  const f = await fixture(t);
+  await symlink(path.join(f.outside, 'secret.xml'), path.join(f.screens, 'external.xml'));
+  await symlink(path.join(f.screens, 'flows', 'start.xml'), path.join(f.screens, 'internal.xml'));
+  await symlink(f.outside, path.join(f.screens, 'external'));
+  // Isolate the platform override from concurrent tests and Node's watcher selection.
+  const child = spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `
+        import assert from 'node:assert/strict';
+        import { rename, symlink } from 'node:fs/promises';
+        import path from 'node:path';
+
+        Object.defineProperty(process, 'platform', { value: 'android' });
+        const { loadProject, readScreen } = await import(process.argv[1]);
+        const root = process.argv[2];
+        const project = await loadProject(root);
+        try {
+          assert.equal(await readScreen(project, 'flows/start.xml'), process.argv[3]);
+          for (const name of ['external.xml', 'internal.xml', 'external/secret.xml']) {
+            await assert.rejects(readScreen(project, name));
+          }
+          await assert.rejects(readScreen(project, '../outside/secret.xml'), TypeError);
+
+          Object.defineProperty(process, 'platform', { value: 'win32' });
+          await assert.rejects(loadProject(root), Error);
+          Object.defineProperty(process, 'platform', { value: 'android' });
+
+          await rename(project.screens, path.join(root, 'original-screens'));
+          await symlink(path.join(root, '..', 'outside'), project.screens);
+          assert.equal(await readScreen(project, 'flows/start.xml'), process.argv[3]);
+          await assert.rejects(readScreen(project, 'secret.xml'));
+          await assert.rejects(loadProject(root));
+        } finally {
+          await project.directory.close();
+        }
+      `,
+      new URL('./project.js', import.meta.url).href,
+      f.root,
+      xml,
+    ],
+    { stdio: ['ignore', 'ignore', 'pipe'] },
+  );
+  t.after(() => {
+    if (child.exitCode === null) child.kill('SIGKILL');
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  const [code] = await once(child, 'close');
+  assert.equal(code, 0, stderr);
+});
+
 test('rejects malformed URLs and Host without losing subsequent requests or leaking paths', async (t) => {
   const f = await fixture(t);
   const { port } = await start(f);
